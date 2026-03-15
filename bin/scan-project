@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Scans a Rails project and detects framework API usage.
+# Uses ripgrep for speed.
+#
+# Usage:
+#   bin/scan-project /path/to/rails/app
+#   bin/scan-project /path/to/rails/app --rails-version 5.0.7
+#   bin/scan-project .   # current directory
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+PROJECT_DIR="${1:-.}"
+RAILS_VERSION=""
+
+shift || true
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --rails-version) RAILS_VERSION="$2"; shift 2 ;;
+    *) echo "Unknown flag: $1"; exit 1 ;;
+  esac
+done
+
+if [[ ! -d "$PROJECT_DIR" ]]; then
+  echo "Error: $PROJECT_DIR is not a directory"
+  exit 1
+fi
+
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+OUTPUT_FILE="$(mktemp /tmp/scan-XXXXXX.txt)"
+trap 'rm -f "$OUTPUT_FILE"' EXIT
+
+echo "Scanning: $PROJECT_DIR"
+echo "---"
+
+# --- Rails DSL and API patterns -------------------------------------------
+# These patterns detect common Rails API usage in project code.
+
+RAILS_PATTERNS=(
+  # ActiveRecord
+  'has_many|has_one|belongs_to|has_and_belongs_to_many'
+  'validates|validates_presence_of|validates_uniqueness_of|validates_format_of'
+  'before_action|after_action|around_action|skip_before_action'
+  'before_filter|after_filter|around_filter|skip_before_filter'
+  'before_save|after_save|before_create|after_create|before_destroy|after_destroy'
+  'before_validation|after_validation|before_update|after_update'
+  'scope\s+:'
+  'enum\s+\w'
+  'serialize\s+:'
+  'store\s+:'
+  'attr_accessible|attr_protected'
+  'update_attributes|update_attribute'
+  'find_by_\w+'
+  'where\(|order\(|limit\(|offset\(|joins\(|includes\(|preload\(|eager_load\('
+  'pluck\(|select\(|group\(|having\('
+  'find_or_create_by|find_or_initialize_by'
+  'create!|save!|update!|destroy!'
+  'ActiveRecord::Base'
+  'ActiveRecord::Migration'
+  'ApplicationRecord'
+
+  # ActionController
+  'render\s|redirect_to|head\s'
+  'respond_to\s|respond_with'
+  'params\[|params\.permit|params\.require'
+  'strong_parameters'
+  'protect_from_forgery'
+  'ActionController::Base'
+  'ApplicationController'
+
+  # ActionView
+  'form_for|form_with|form_tag'
+  'link_to|button_to|image_tag'
+  'content_for|yield\s'
+  'render\s+partial:'
+
+  # ActiveSupport
+  '\.blank\?|\.present\?'
+  '\.try\(|\.try!'
+  'HashWithIndifferentAccess'
+  'ActiveSupport::Concern'
+  'ActiveSupport::Callbacks'
+
+  # ActiveJob
+  'ApplicationJob|ActiveJob::Base'
+  'perform_later|perform_now'
+
+  # ActionMailer
+  'ApplicationMailer|ActionMailer::Base'
+  'mail\(\s*to:'
+
+  # Routes
+  'resources\s+:|resource\s+:'
+  'get\s+|post\s+|put\s+|patch\s+|delete\s+'
+  'root\s+'
+  'namespace\s+:|scope\s+'
+)
+
+# --- Scan with ripgrep ----------------------------------------------------
+
+# Combine patterns
+COMBINED_PATTERN=$(IFS='|'; echo "${RAILS_PATTERNS[*]}")
+
+# Search only Ruby files in app/, lib/, config/
+SEARCH_DIRS=()
+for dir in app lib config db/migrate; do
+  if [[ -d "$PROJECT_DIR/$dir" ]]; then
+    SEARCH_DIRS+=("$PROJECT_DIR/$dir")
+  fi
+done
+
+if [[ ${#SEARCH_DIRS[@]} -eq 0 ]]; then
+  echo "Warning: No app/, lib/, config/ directories found."
+  echo "Scanning entire project..."
+  SEARCH_DIRS=("$PROJECT_DIR")
+fi
+
+# Run ripgrep
+if command -v rg &>/dev/null; then
+  rg --no-heading -n --type ruby -o "$COMBINED_PATTERN" "${SEARCH_DIRS[@]}" 2>/dev/null | sort > "$OUTPUT_FILE" || true
+else
+  grep -rn --include='*.rb' -oE "$COMBINED_PATTERN" "${SEARCH_DIRS[@]}" 2>/dev/null | sort > "$OUTPUT_FILE" || true
+fi
+
+# --- Extract and deduplicate API names ------------------------------------
+
+echo "Rails APIs detected:"
+echo ""
+
+# Extract unique API calls
+grep -oE '[A-Z][\w:]+(\.\w+|\#\w+)?' "$OUTPUT_FILE" 2>/dev/null | sort -u | head -100
+
+echo ""
+echo "---"
+echo "Rails DSL usage:"
+echo ""
+
+# Count DSL usage
+grep -oE '(has_many|has_one|belongs_to|validates\w*|before_action|after_action|before_filter|after_filter|before_save|after_save|scope|enum|serialize|form_for|form_with|form_tag|render|redirect_to|update_attributes?|find_or_create_by|find_or_initialize_by|attr_accessible|attr_protected|respond_to|respond_with|protect_from_forgery)' "$OUTPUT_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -50
+
+TOTAL=$(wc -l < "$OUTPUT_FILE" | tr -d ' ')
+echo ""
+echo "---"
+echo "Total API references found: $TOTAL"
+
+# --- Check against index if version specified ---
+if [[ -n "$RAILS_VERSION" ]]; then
+  IDX="$BASE_DIR/indexes/rails/$RAILS_VERSION.idx"
+  if [[ -f "$IDX" ]]; then
+    echo ""
+    echo "Cross-referencing with Rails $RAILS_VERSION index..."
+    # Extract unique class/method references and check each
+    grep -oE '[A-Z][\w:]+(\.\w+|\#\w+)' "$OUTPUT_FILE" 2>/dev/null | sort -u | while read -r api; do
+      if ! grep -qi "|${api}|" "$IDX" 2>/dev/null; then
+        if ! grep -qi "|.*${api}.*|" "$IDX" 2>/dev/null; then
+          echo "  WARNING: $api not found in Rails $RAILS_VERSION index"
+        fi
+      fi
+    done
+  fi
+fi

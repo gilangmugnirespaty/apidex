@@ -1,0 +1,241 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Compatibility checker: compares API usage between two versions.
+#
+# Usage:
+#   bin/compat-check rails 5.0.7 7.2.2.2
+#   bin/compat-check ruby  2.6.7 3.4.7
+#   bin/compat-check rails 5.0.7 7.2.2.2 --project /path/to/app
+#   bin/compat-check rails 5.0.7 7.2.2.2 --api "ActiveRecord::Base#update_attributes"
+
+BASE_DIR = File.expand_path('..', __dir__)
+
+require 'set'
+
+# --- parse args -----------------------------------------------------------
+
+if ARGV.include?('--help') || ARGV.include?('-h')
+  ARGV.clear
+end
+
+framework = ARGV.shift
+from_ver  = ARGV.shift
+to_ver    = ARGV.shift
+
+unless framework && from_ver && to_ver && %w[rails ruby].include?(framework)
+  puts "Usage: bin/compat-check <rails|ruby> <from_version> <to_version> [options]"
+  puts ""
+  puts "Options:"
+  puts "  --project PATH   Scan project and check all APIs"
+  puts "  --api NAME       Check a single API"
+  puts "  --known-only     Only show known breaking changes"
+  puts ""
+  puts "Examples:"
+  puts "  bin/compat-check rails 5.0.7 7.2.2.2"
+  puts "  bin/compat-check ruby 2.6.7 3.4.7"
+  puts "  bin/compat-check rails 5.0.7 7.2.2.2 --api 'ActiveRecord::Base#update_attributes'"
+  exit 1
+end
+
+project_dir = nil
+single_api  = nil
+known_only  = false
+
+while arg = ARGV.shift
+  case arg
+  when '--project' then project_dir = ARGV.shift
+  when '--api'     then single_api  = ARGV.shift
+  when '--known-only' then known_only = true
+  end
+end
+
+# --- load indexes ---------------------------------------------------------
+
+def load_index(path)
+  return nil unless File.exist?(path)
+  index = {}
+  File.foreach(path) do |line|
+    parts = line.strip.split('|', 4)
+    next if parts.size < 2
+    type, name, sig, location = parts
+    index[name] = { type: type, sig: sig || '', location: location || '' }
+  end
+  index
+end
+
+from_idx_path = File.join(BASE_DIR, 'indexes', framework, "#{from_ver}.idx")
+to_idx_path   = File.join(BASE_DIR, 'indexes', framework, "#{to_ver}.idx")
+
+from_idx = load_index(from_idx_path)
+to_idx   = load_index(to_idx_path)
+
+unless from_idx
+  $stderr.puts "ERROR: Index not found: #{from_idx_path}"
+  $stderr.puts "Run: bin/build-index #{framework} #{from_ver}"
+  exit 1
+end
+
+unless to_idx
+  $stderr.puts "ERROR: Index not found: #{to_idx_path}"
+  $stderr.puts "Run: bin/build-index #{framework} #{to_ver}"
+  exit 1
+end
+
+# --- load known breaking changes ------------------------------------------
+
+def load_known_changes(base_dir, framework, from_ver, to_ver)
+  changes = {}
+  pattern = File.join(base_dir, 'known-changes', "#{framework}-*.tsv")
+  Dir.glob(pattern).each do |path|
+    File.foreach(path) do |line|
+      next if line.start_with?('#') || line.strip.empty?
+      parts = line.strip.split("\t", 4)
+      next if parts.size < 3
+      api, status, replacement = parts[0], parts[1], parts[2]
+      changes[api] = { status: status, replacement: replacement, note: parts[3] || '' }
+    end
+  end
+  changes
+end
+
+known = load_known_changes(BASE_DIR, framework, from_ver, to_ver)
+
+# --- determine APIs to check ----------------------------------------------
+
+apis_to_check = Set.new
+
+if single_api
+  apis_to_check << single_api
+elsif project_dir
+  # Scan project using ripgrep — use shellescape to prevent injection
+  require 'shellwords'
+  dirs = %w[app lib config].map { |d| File.join(project_dir, d) }
+                            .select { |d| Dir.exist?(d) }
+                            .map { |d| Shellwords.escape(d) }
+  if dirs.any?
+    scan_cmd = "rg --no-heading -oN '[A-Z][\\w:]+([#.][\\w!?=]+)' --type ruby #{dirs.join(' ')} 2>/dev/null || true"
+    results = `#{scan_cmd}`
+    results.each_line { |l| apis_to_check << l.strip unless l.strip.empty? }
+  else
+    $stderr.puts "WARNING: No app/, lib/, config/ directories found in #{project_dir}"
+  end
+else
+  # Compare all APIs: find what's in from but not in to
+  from_idx.each_key { |name| apis_to_check << name }
+end
+
+# --- check compatibility -------------------------------------------------
+
+removed   = []  # in from, not in to
+added     = []  # in to, not in from
+changed   = []  # in both but signature changed
+known_brk = []  # known breaking changes
+
+def match_api?(index_key, query)
+  return true if index_key == query
+  # Match method short name: "update_attributes" matches "Foo#update_attributes"
+  return true if index_key.end_with?("##{query}") || index_key.end_with?(".#{query}")
+  false
+end
+
+apis_to_check.each do |api|
+  # Check known changes — exact or method-name match only
+  if known.key?(api)
+    known_brk << { api: api, **known[api] }
+  else
+    known.each do |pattern, info|
+      # Only match if the known pattern IS the api name or ends with #/. + api
+      if match_api?(api, pattern) || match_api?(pattern, api)
+        known_brk << { api: api, **info }
+      end
+    end
+  end
+
+  next if known_only
+
+  in_from = from_idx.keys.any? { |k| match_api?(k, api) }
+  in_to   = to_idx.keys.any?   { |k| match_api?(k, api) }
+
+  if in_from && !in_to
+    from_entry = from_idx.find { |k, _| match_api?(k, api) }
+    removed << { api: api, from_entry: from_entry }
+  elsif !in_from && in_to
+    to_entry = to_idx.find { |k, _| match_api?(k, api) }
+    added << { api: api, to_entry: to_entry }
+  elsif in_from && in_to
+    from_entry = from_idx.find { |k, _| match_api?(k, api) }
+    to_entry   = to_idx.find { |k, _| match_api?(k, api) }
+    if from_entry && to_entry && from_entry[1][:sig] != to_entry[1][:sig]
+      changed << { api: api, from_sig: from_entry[1][:sig], to_sig: to_entry[1][:sig] }
+    end
+  end
+end
+
+# --- output report --------------------------------------------------------
+
+puts "=" * 60
+puts "COMPATIBILITY REPORT: #{framework} #{from_ver} → #{to_ver}"
+puts "=" * 60
+
+if known_brk.any?
+  puts ""
+  puts "KNOWN BREAKING CHANGES (#{known_brk.size}):"
+  puts "-" * 40
+  known_brk.uniq { |k| k[:api] }.each do |entry|
+    puts "  #{entry[:api]}"
+    puts "    Status:      #{entry[:status]}"
+    puts "    Replacement: #{entry[:replacement]}" unless entry[:replacement].to_s.empty?
+    puts "    Note:        #{entry[:note]}" unless entry[:note].to_s.empty?
+    puts ""
+  end
+end
+
+unless known_only
+  if removed.any?
+    puts ""
+    puts "REMOVED APIs (in #{from_ver}, not in #{to_ver}): #{removed.size}"
+    puts "-" * 40
+    removed.first(50).each do |entry|
+      puts "  #{entry[:api]}"
+      if entry[:from_entry]
+        puts "    Was at: #{entry[:from_entry][1][:location]}"
+      end
+    end
+    puts "  ... (#{removed.size - 50} more)" if removed.size > 50
+  end
+
+  if added.any? && single_api
+    puts ""
+    puts "NEW APIs (in #{to_ver}, not in #{from_ver}): #{added.size}"
+    puts "-" * 40
+    added.first(20).each do |entry|
+      puts "  #{entry[:api]}"
+    end
+  end
+
+  if changed.any?
+    puts ""
+    puts "SIGNATURE CHANGES: #{changed.size}"
+    puts "-" * 40
+    changed.first(30).each do |entry|
+      puts "  #{entry[:api]}"
+      puts "    #{from_ver}: #{entry[:from_sig]}"
+      puts "    #{to_ver}:   #{entry[:to_sig]}"
+      puts ""
+    end
+  end
+end
+
+if removed.empty? && known_brk.empty? && changed.empty?
+  if single_api
+    puts ""
+    puts "OK: #{single_api} is compatible across both versions."
+  else
+    puts ""
+    puts "No compatibility issues detected."
+  end
+end
+
+puts ""
+puts "Checked: #{apis_to_check.size} APIs"

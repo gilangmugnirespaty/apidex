@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Shows the history of an API across ALL indexed versions.
+#
+# Usage:
+#   bin/api-history rails "update_attributes"
+#   bin/api-history ruby  "Hash#except"
+#   bin/api-history rails "ActiveRecord::QueryMethods#where"
+#   bin/api-history ruby  "filter_map"
+#
+# Options:
+#   --exact   Only match fully-qualified names
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+EXACT=0
+
+while [[ "${1:-}" == --* || "${1:-}" == -* ]]; do
+  case "$1" in
+    --exact) EXACT=1; shift ;;
+    --help|-h)
+      echo "Usage: bin/api-history [--exact] <rails|ruby> <query>"
+      echo ""
+      echo "Shows the presence/absence of an API across ALL indexed versions."
+      echo ""
+      echo "Examples:"
+      echo "  bin/api-history rails 'update_attributes'"
+      echo "  bin/api-history ruby  'Hash#except'"
+      echo "  bin/api-history rails 'ActiveRecord::QueryMethods#where'"
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1"; exit 1 ;;
+  esac
+done
+
+FRAMEWORK="${1:-}"
+QUERY="${2:-}"
+
+if [[ -z "$FRAMEWORK" || -z "$QUERY" ]]; then
+  echo "Usage: bin/api-history [--exact] <rails|ruby> <query>"
+  echo "Run 'bin/api-history --help' for more info."
+  exit 1
+fi
+
+if [[ "$FRAMEWORK" != "rails" && "$FRAMEWORK" != "ruby" ]]; then
+  echo "ERROR: framework must be 'rails' or 'ruby', got '$FRAMEWORK'"
+  exit 1
+fi
+
+IDX_DIR="$BASE_DIR/indexes/$FRAMEWORK"
+
+if [[ ! -d "$IDX_DIR" ]]; then
+  echo "ERROR: No indexes found for $FRAMEWORK"
+  echo "Run: bin/fetch-source $FRAMEWORK <version> && bin/build-index $FRAMEWORK <version>"
+  exit 1
+fi
+
+# Build grep pattern
+if [[ $EXACT -eq 1 ]]; then
+  PATTERN="^[^|]*[|]${QUERY}[|]"
+else
+  PATTERN="[|][^|]*${QUERY}[^|]*[|]"
+fi
+
+# Check known-changes for context
+KNOWN_INFO=""
+for f in "$BASE_DIR"/known-changes/${FRAMEWORK}-*.tsv; do
+  [[ -f "$f" ]] || continue
+  MATCH=$(grep -i "^${QUERY}	" "$f" 2>/dev/null | head -1 || true)
+  if [[ -n "$MATCH" ]]; then
+    STATUS=$(echo "$MATCH" | cut -d'	' -f2)
+    REPLACEMENT=$(echo "$MATCH" | cut -d'	' -f3)
+    NOTE=$(echo "$MATCH" | cut -d'	' -f4)
+    KNOWN_INFO="  Known: ${STATUS}"
+    [[ -n "$REPLACEMENT" && "$REPLACEMENT" != "(none)" ]] && KNOWN_INFO="$KNOWN_INFO → use $REPLACEMENT"
+    [[ -n "$NOTE" ]] && KNOWN_INFO="$KNOWN_INFO ($NOTE)"
+  fi
+done
+
+echo "API HISTORY: $QUERY"
+echo "Framework:   $FRAMEWORK"
+[[ -n "$KNOWN_INFO" ]] && echo "$KNOWN_INFO"
+echo "---"
+
+# Iterate through all indexed versions in sorted order
+for idx_file in $(ls "$IDX_DIR"/*.idx 2>/dev/null | sort -V); do
+  VERSION=$(basename "$idx_file" .idx)
+  RESULTS=$(grep -iE "$PATTERN" "$idx_file" 2>/dev/null || true)
+
+  if [[ -z "$RESULTS" ]]; then
+    printf "  %-12s  NOT_FOUND\n" "$VERSION"
+  else
+    COUNT=$(echo "$RESULTS" | wc -l | tr -d ' ')
+    # Show first match details
+    FIRST=$(echo "$RESULTS" | head -1)
+    TYPE=$(echo "$FIRST" | cut -d'|' -f1)
+    NAME=$(echo "$FIRST" | cut -d'|' -f2)
+    SIG=$(echo "$FIRST" | cut -d'|' -f3)
+    LOC=$(echo "$FIRST" | cut -d'|' -f4)
+
+    if [[ -n "$SIG" && "$SIG" != "$NAME" ]]; then
+      DISPLAY="$SIG"
+    else
+      DISPLAY="$NAME"
+    fi
+
+    if [[ $COUNT -eq 1 ]]; then
+      printf "  %-12s  FOUND  %s  [%s] %s\n" "$VERSION" "$TYPE" "$DISPLAY" "$LOC"
+    else
+      printf "  %-12s  FOUND  %s  [%s] %s  (+%d more)\n" "$VERSION" "$TYPE" "$DISPLAY" "$LOC" "$((COUNT - 1))"
+    fi
+  fi
+done

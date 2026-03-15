@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Builds a compact API index from source code.
+#
+# Usage:
+#   bin/build-index rails 5.0.7
+#   bin/build-index ruby  2.6.7
+#   bin/build-index all          # builds all downloaded versions
+
+require_relative '../lib/source_parser'
+
+BASE_DIR = File.expand_path('..', __dir__)
+
+def build_one(framework, version)
+  src_dir = File.join(BASE_DIR, "#{framework}-src", version)
+  unless Dir.exist?(src_dir)
+    $stderr.puts "ERROR: Source not found: #{src_dir}"
+    $stderr.puts "       Run: bin/fetch-source #{framework} #{version}"
+    return false
+  end
+
+  idx_dir = File.join(BASE_DIR, 'indexes', framework)
+  Dir.mkdir(idx_dir) unless Dir.exist?(idx_dir)
+  idx_file = File.join(idx_dir, "#{version}.idx")
+
+  $stderr.puts "Parsing #{framework} #{version} ..."
+  lang = framework == 'ruby' ? :ruby : :rails
+  entries = SourceParser.parse(src_dir, lang: lang)
+
+  File.open(idx_file, 'w') do |f|
+    entries.each { |line| f.puts(line) }
+  end
+
+  count = entries.size
+  size_kb = (File.size(idx_file) / 1024.0).round(1)
+  $stderr.puts "  => #{idx_file} (#{count} entries, #{size_kb} KB)"
+  true
+end
+
+def build_all
+  %w[rails ruby].each do |fw|
+    src_root = File.join(BASE_DIR, "#{fw}-src")
+    next unless Dir.exist?(src_root)
+
+    Dir.children(src_root).sort.each do |version|
+      next unless File.directory?(File.join(src_root, version))
+      build_one(fw, version)
+    end
+  end
+end
+
+# --- main -----------------------------------------------------------------
+
+if ARGV.empty? || ARGV[0] == '--help'
+  puts "Usage: bin/build-index <rails|ruby> <version>"
+  puts "       bin/build-index all"
+  exit 0
+end
+
+if ARGV[0] == 'all'
+  build_all
+else
+  framework = ARGV[0]
+  version   = ARGV[1]
+  unless version
+    $stderr.puts "Error: version required. e.g. bin/build-index rails 5.0.7"
+    exit 1
+  end
+  exit(build_one(framework, version) ? 0 : 1)
+end

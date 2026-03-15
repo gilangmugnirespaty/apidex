@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Initial setup: fetches source code and builds indexes.
+#
+# Usage:
+#   bin/setup                                          # interactive
+#   bin/setup --defaults                               # Rails 5.0.7+7.2.2.2, Ruby 2.6.7+3.4.7
+#   bin/setup --rails 5.0.7 7.2.2.2 --ruby 2.6.7 3.4.7   # custom versions
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: bin/setup [options]"
+  echo ""
+  echo "Options:"
+  echo "  --defaults                Use Rails 5.0.7+7.2.2.2, Ruby 2.6.7+3.4.7"
+  echo "  --rails V1 V2 ...        Specify Rails versions"
+  echo "  --ruby  V1 V2 ...        Specify Ruby versions"
+  echo "  --rails-only              Skip Ruby"
+  echo "  --ruby-only               Skip Rails"
+  echo ""
+  echo "Examples:"
+  echo "  bin/setup --defaults"
+  echo "  bin/setup --rails 6.1.7 7.2.2.2 --ruby 3.0.7 3.4.7"
+  echo "  bin/setup --rails 7.0.8 7.2.2.2 8.0.1 --ruby-only"
+  exit 0
+fi
+
+echo "=== rails-ruby-docs setup ==="
+echo ""
+
+# Default versions
+RAILS_VERSIONS=("5.0.7" "7.2.2.2")
+RUBY_VERSIONS=("2.6.7" "3.4.7")
+SKIP_RAILS=0
+SKIP_RUBY=0
+
+# Parse args
+if [[ "${1:-}" == "--defaults" ]]; then
+  : # use defaults
+elif [[ $# -gt 0 ]]; then
+  # Parse --rails and --ruby flags
+  RAILS_VERSIONS=()
+  RUBY_VERSIONS=()
+  CURRENT=""
+  for arg in "$@"; do
+    case "$arg" in
+      --rails) CURRENT="rails" ;;
+      --ruby)  CURRENT="ruby" ;;
+      --rails-only) SKIP_RUBY=1 ;;
+      --ruby-only)  SKIP_RAILS=1 ;;
+      *)
+        case "$CURRENT" in
+          rails) RAILS_VERSIONS+=("$arg") ;;
+          ruby)  RUBY_VERSIONS+=("$arg") ;;
+          *) echo "Error: specify --rails or --ruby before version numbers"; exit 1 ;;
+        esac
+        ;;
+    esac
+  done
+else
+  # Interactive mode
+  echo "Default Rails versions: ${RAILS_VERSIONS[*]}"
+  echo "Default Ruby versions:  ${RUBY_VERSIONS[*]}"
+  echo ""
+  read -p "Use defaults? [Y/n] " -n 1 -r
+  echo ""
+  if [[ $REPLY =~ ^[Nn]$ ]]; then
+    read -p "Rails versions (space-separated, or empty to skip): " -a RAILS_VERSIONS
+    read -p "Ruby versions (space-separated, or empty to skip): " -a RUBY_VERSIONS
+  fi
+fi
+
+# Create directory structure
+mkdir -p "$BASE_DIR"/{rails-src,ruby-src,indexes/{rails,ruby},known-changes,bin,lib}
+
+# Fetch sources
+echo ""
+echo "=== Fetching source code ==="
+
+if [[ $SKIP_RAILS -eq 0 && ${#RAILS_VERSIONS[@]} -gt 0 ]]; then
+  for v in "${RAILS_VERSIONS[@]}"; do
+    "$BASE_DIR/bin/fetch-source" rails "$v"
+  done
+fi
+
+if [[ $SKIP_RUBY -eq 0 && ${#RUBY_VERSIONS[@]} -gt 0 ]]; then
+  for v in "${RUBY_VERSIONS[@]}"; do
+    "$BASE_DIR/bin/fetch-source" ruby "$v"
+  done
+fi
+
+# Build indexes
+echo ""
+echo "=== Building API indexes ==="
+"$BASE_DIR/bin/build-index" all
+
+# Summary
+echo ""
+echo "=== Setup Complete ==="
+echo ""
+echo "Tools available:"
+echo "  bin/api-lookup    Quick API lookup"
+echo "  bin/api-history   Track API across versions"
+echo "  bin/compat-check  Compare API compatibility"
+echo "  bin/scan-project  Scan a Rails project"
+echo "  bin/fetch-source  Download new versions"
+echo "  bin/build-index   Rebuild indexes"
+echo ""
+echo "Indexes:"
+ls -lh "$BASE_DIR"/indexes/rails/*.idx "$BASE_DIR"/indexes/ruby/*.idx 2>/dev/null || echo "  (none)"
+echo ""
+echo "Try: bin/api-lookup rails 7.2.2.2 'where'"

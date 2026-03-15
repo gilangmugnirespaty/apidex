@@ -1,0 +1,28 @@
+# Downloaded source code (large, users fetch their own)
+/rails-src/*
+!/rails-src/.gitkeep
+/ruby-src/*
+!/ruby-src/.gitkeep
+
+# Generated indexes (users build their own)
+/indexes/rails/*.idx
+/indexes/ruby/*.idx
+!/indexes/rails/.gitkeep
+!/indexes/ruby/.gitkeep
+
+# IDE / editor
+.claude/
+.ruby-lsp/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+/tmp/
+*.tar.gz

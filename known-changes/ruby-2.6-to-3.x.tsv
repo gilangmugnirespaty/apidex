@@ -1,0 +1,60 @@
+# Known Ruby breaking changes: 2.6 → 3.4
+# Format: API_NAME<TAB>STATUS<TAB>REPLACEMENT<TAB>NOTE
+#
+# STATUS values: removed, deprecated, changed, added, warning
+#
+# --- Ruby 3.0 breaking changes ---
+Keyword arguments (hash-to-kwargs)	changed	Explicit double splat (**)	Ruby 3.0: Automatic Hash-to-keyword conversion removed. foo(key: val) required instead of foo({key: val})
+Keyword arguments (last hash arg)	changed	Explicit double splat (**)	Ruby 3.0: Last argument as keyword params no longer automatic. Use **hash explicitly
+Object#taint	removed	(none)	Ruby 3.2: taint/untaint/tainted? are no-ops in 3.1, removed in 3.2
+Object#untaint	removed	(none)	Ruby 3.2: see taint
+Object#tainted?	removed	(none)	Ruby 3.2: see taint
+Object#trust	removed	(none)	Ruby 3.2: trust/untrust/trusted? removed
+Object#untrust	removed	(none)	Ruby 3.2: see trust
+Object#trusted?	removed	(none)	Ruby 3.2: see trust
+$SAFE	removed	(none)	Ruby 3.0: $SAFE is now always 0, assignment raises
+$KCODE	removed	(none)	Removed
+URI.open	changed	URI.open or Kernel#open	Ruby 3.0: open-uri no longer overrides Kernel#open. Use URI.open explicitly
+Proc#call with block	changed	Proc#call	Ruby 3.0: proc.call(&block) warns → use proc.call with block literal
+String#encode	changed	String#encode	Default encoding behaviors updated
+# --- Ruby 3.1 changes ---
+Hash#each	changed	Hash#each	Ruby 3.1: yields 2 args consistently (was inconsistent with lambda)
+Struct.new(keyword_init: true)	changed	Struct.new	Ruby 3.2: keyword_init: nil is the default (accepts both)
+Enumerable#compact	added	(none)	New in Ruby 3.1
+Integer.try_convert	added	(none)	New in Ruby 3.1
+MatchData#match	added	(none)	New in Ruby 3.1
+MatchData#match_length	added	(none)	New in Ruby 3.1
+# --- Ruby 3.2 changes ---
+Set	changed	Set	Ruby 3.2: Set is now a built-in class (no require 'set')
+Regexp timeout	added	Regexp.timeout=	New in Ruby 3.2: global Regexp timeout
+Data.define	added	(none)	New in Ruby 3.2: immutable value objects
+Fiber.new(storage:)	added	(none)	New in Ruby 3.2: fiber-local storage
+IO#wait_readable	deprecated	IO#wait(IO::READABLE)	Ruby 3.2: use IO#wait with flags
+IO#wait_writable	deprecated	IO#wait(IO::WRITABLE)	Ruby 3.2: use IO#wait with flags
+# --- Ruby 3.3 changes ---
+Range#overlap?	added	(none)	New in Ruby 3.3
+Refinement#target	added	(none)	New in Ruby 3.3
+# --- Ruby 3.4 changes ---
+String#unpack	changed	String#unpack	Ruby 3.4: stricter behavior with offset
+Regexp	changed	Regexp	Ruby 3.4: RJIT removed, YJIT improvements
+# --- Methods added in Ruby 2.7-3.x (not available in 2.6) ---
+Array#filter_map	added	(none)	New in Ruby 2.7
+Array#intersection	added	(none)	New in Ruby 2.7
+Array#tally	added	(none)	New in Ruby 2.7 (Enumerable)
+Enumerable#tally	added	(none)	New in Ruby 2.7
+Enumerable#filter_map	added	(none)	New in Ruby 2.7
+Hash#except	added	(none)	New in Ruby 3.0
+Hash#transform_keys (with hash arg)	added	(none)	New in Ruby 2.5 but hash arg in 3.0
+Comparable#clamp (with Range)	added	(none)	Range argument new in Ruby 2.7
+Symbol#name	added	(none)	New in Ruby 3.0 (returns frozen string)
+Integer#digits	changed	Integer#digits	Available since 2.4 but behavior edge cases changed
+Kernel#pp	added	(none)	Available without require since Ruby 2.7
+Pattern matching (case/in)	added	(none)	New in Ruby 2.7 (experimental), stable in Ruby 3.0
+Numbered block parameters (_1, _2)	added	(none)	New in Ruby 2.7
+Endless method (def foo = expr)	added	(none)	New in Ruby 3.0
+Rightward assignment (expr => var)	added	(none)	New in Ruby 3.0
+Hash literal shorthand (x:)	added	(none)	New in Ruby 3.1: {x:} same as {x: x}
+Anonymous block forwarding (def foo(&); bar(&))	added	(none)	New in Ruby 3.1
+Anonymous rest/keyword forwarding (*, **)	added	(none)	New in Ruby 3.2
+Fiber.scheduler	added	(none)	New in Ruby 3.0: Fiber scheduler interface
+Ractor	added	(none)	New in Ruby 3.0: parallel execution primitive

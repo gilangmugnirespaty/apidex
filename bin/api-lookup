@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fast API lookup against the local index.
+#
+# Usage:
+#   bin/api-lookup rails 7.2.2.2 "ActiveRecord::Relation#where"
+#   bin/api-lookup ruby  3.4.7   "Array#filter_map"
+#   bin/api-lookup rails 5.0.7   "ActiveRecord::Base"          # class lookup
+#   bin/api-lookup rails 5.0.7   "update_attributes"           # partial search
+#
+# Options:
+#   --exact   Only match fully-qualified names (default: partial match)
+#   --files   Show file locations only
+#   --count   Show count of matches only
+#
+# Exit codes:
+#   0  Found matches
+#   1  Not found / no matches
+#   2  Usage error or missing index
+#
+# Output: one match per line, minimal tokens for AI coding assistants.
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+EXACT=0
+FILES=0
+COUNT=0
+
+# Parse flags
+while [[ "${1:-}" == --* || "${1:-}" == -* ]]; do
+  case "$1" in
+    --exact) EXACT=1; shift ;;
+    --files) FILES=1; shift ;;
+    --count) COUNT=1; shift ;;
+    --help|-h)
+      echo "Usage: bin/api-lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
+      echo ""
+      echo "Fast API lookup against the local index."
+      echo ""
+      echo "Options:"
+      echo "  --exact   Only match fully-qualified names"
+      echo "  --files   Show file locations only"
+      echo "  --count   Show count of matches only"
+      echo ""
+      echo "Exit codes: 0=found, 1=not found, 2=usage error"
+      echo ""
+      echo "Examples:"
+      echo "  bin/api-lookup rails 7.2.2.2 'where'                        # partial"
+      echo "  bin/api-lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
+      echo "  bin/api-lookup --files ruby 3.4.7 'Hash#except'"
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1"; exit 2 ;;
+  esac
+done
+
+FRAMEWORK="${1:-}"
+VERSION="${2:-}"
+QUERY="${3:-}"
+
+if [[ -z "$FRAMEWORK" || -z "$VERSION" || -z "$QUERY" ]]; then
+  echo "Usage: bin/api-lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
+  echo ""
+  echo "Examples:"
+  echo "  bin/api-lookup rails 7.2.2.2 'where'                        # partial"
+  echo "  bin/api-lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
+  echo "  bin/api-lookup --files ruby 3.4.7 'Hash#except'"
+  echo "  bin/api-lookup --count rails 5.0.7 'before_filter'"
+  exit 2
+fi
+
+if [[ "$FRAMEWORK" != "rails" && "$FRAMEWORK" != "ruby" ]]; then
+  echo "ERROR: framework must be 'rails' or 'ruby', got '$FRAMEWORK'"
+  exit 2
+fi
+
+IDX_FILE="$BASE_DIR/indexes/$FRAMEWORK/$VERSION.idx"
+
+if [[ ! -f "$IDX_FILE" ]]; then
+  echo "INDEX_NOT_FOUND: $FRAMEWORK $VERSION"
+  echo "Run: bin/fetch-source $FRAMEWORK $VERSION && bin/build-index $FRAMEWORK $VERSION"
+  exit 2
+fi
+
+# Build grep pattern — use [|] to match literal pipe in ERE
+if [[ $EXACT -eq 1 ]]; then
+  # Match exactly on the qualified name field (field 2)
+  PATTERN="^[^|]*[|]${QUERY}[|]"
+else
+  # Partial match anywhere in qualified name or signature fields
+  PATTERN="[|][^|]*${QUERY}[^|]*[|]"
+fi
+
+RESULTS=$(grep -iE "$PATTERN" "$IDX_FILE" 2>/dev/null || true)
+
+if [[ -z "$RESULTS" ]]; then
+  echo "NOT_FOUND: $QUERY in $FRAMEWORK $VERSION"
+  exit 1
+fi
+
+if [[ $COUNT -eq 1 ]]; then
+  echo "$RESULTS" | wc -l | tr -d ' '
+  exit 0
+fi
+
+if [[ $FILES -eq 1 ]]; then
+  echo "$RESULTS" | cut -d'|' -f2,4
+else
+  echo "FOUND in $FRAMEWORK $VERSION:"
+  echo "$RESULTS" | head -20
+  TOTAL=$(echo "$RESULTS" | wc -l | tr -d ' ')
+  if [[ $TOTAL -gt 20 ]]; then
+    echo "... ($TOTAL total matches, showing first 20)"
+  fi
+fi

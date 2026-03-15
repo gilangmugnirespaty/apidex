@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Downloads Rails or Ruby source code by version.
+#
+# Usage:
+#   bin/fetch-source rails 5.0.7
+#   bin/fetch-source rails 7.2.2.2
+#   bin/fetch-source ruby  2.6.7
+#   bin/fetch-source ruby  3.4.7
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: bin/fetch-source <rails|ruby> <version>"
+  echo ""
+  echo "Downloads source code from GitHub for the given version."
+  echo "Prunes test/doc directories to save disk space."
+  echo ""
+  echo "Examples:"
+  echo "  bin/fetch-source rails 7.2.2.2"
+  echo "  bin/fetch-source ruby 3.4.7"
+  echo ""
+  echo "Available tags:"
+  echo "  Rails: https://github.com/rails/rails/tags"
+  echo "  Ruby:  https://github.com/ruby/ruby/tags"
+  exit 0
+fi
+
+FRAMEWORK="${1:-}"
+VERSION="${2:-}"
+
+if [[ -z "$FRAMEWORK" || -z "$VERSION" ]]; then
+  echo "Usage: bin/fetch-source <rails|ruby> <version>"
+  echo "Run 'bin/fetch-source --help' for more info."
+  exit 1
+fi
+
+case "$FRAMEWORK" in
+  rails)
+    DEST_DIR="$BASE_DIR/rails-src/$VERSION"
+    TAG="v${VERSION}"
+    REPO_URL="https://github.com/rails/rails/archive/refs/tags/${TAG}.tar.gz"
+    ;;
+  ruby)
+    DEST_DIR="$BASE_DIR/ruby-src/$VERSION"
+    # Ruby tags use underscores: v2_6_7, v3_4_7
+    TAG_VERSION="${VERSION//./_}"
+    TAG="v${TAG_VERSION}"
+    REPO_URL="https://github.com/ruby/ruby/archive/refs/tags/${TAG}.tar.gz"
+    ;;
+  *)
+    echo "Error: framework must be 'rails' or 'ruby'"
+    exit 1
+    ;;
+esac
+
+if [[ -d "$DEST_DIR" ]]; then
+  echo "SKIP: $DEST_DIR already exists"
+  echo "      Remove it first if you want to re-download."
+  exit 0
+fi
+
+echo "Downloading $FRAMEWORK $VERSION (tag: $TAG)..."
+echo "URL: $REPO_URL"
+
+TMPFILE="$(mktemp "${TMPDIR:-/tmp}/src-XXXXXX.tar.gz")"
+trap 'rm -f "$TMPFILE"' EXIT
+
+if ! curl -fSL --progress-bar -o "$TMPFILE" "$REPO_URL"; then
+  echo ""
+  echo "ERROR: Download failed."
+  echo "The tag '$TAG' may not exist. Check available tags at:"
+  case "$FRAMEWORK" in
+    rails) echo "  https://github.com/rails/rails/tags" ;;
+    ruby)  echo "  https://github.com/ruby/ruby/tags" ;;
+  esac
+  exit 1
+fi
+
+mkdir -p "$DEST_DIR"
+
+echo "Extracting to $DEST_DIR ..."
+tar xzf "$TMPFILE" --strip-components=1 -C "$DEST_DIR"
+
+# For Rails, remove non-essential dirs to save disk space
+if [[ "$FRAMEWORK" == "rails" ]]; then
+  echo "Pruning test/doc/guide directories to save space..."
+  find "$DEST_DIR" -type d \( -name "test" -o -name "spec" -o -name "guides" -o -name "doc" \) -exec rm -rf {} + 2>/dev/null || true
+fi
+
+# For Ruby, keep only lib/ and *.c files (core source)
+if [[ "$FRAMEWORK" == "ruby" ]]; then
+  echo "Pruning non-essential files to save space..."
+  # Keep: lib/, *.c, *.h, include/ — remove: test/, spec/, doc/, sample/, benchmark/
+  find "$DEST_DIR" -type d \( -name "test" -o -name "spec" -o -name "doc" -o -name "sample" -o -name "benchmark" -o -name "man" \) -exec rm -rf {} + 2>/dev/null || true
+fi
+
+SIZE=$(du -sh "$DEST_DIR" | cut -f1)
+echo ""
+echo "Done: $FRAMEWORK $VERSION → $DEST_DIR ($SIZE)"

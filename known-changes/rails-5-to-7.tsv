@@ -1,0 +1,52 @@
+# Known Rails breaking changes: 5.0 → 7.2
+# Format: API_NAME<TAB>STATUS<TAB>REPLACEMENT<TAB>NOTE
+#
+# STATUS values: removed, deprecated, changed, renamed, moved
+#
+ActiveRecord::Base#update_attributes	removed	update	Deprecated in Rails 5, removed in Rails 6.1
+ActiveRecord::Base#update_attributes!	removed	update!	Deprecated in Rails 5, removed in Rails 6.1
+ActiveRecord::Base.update_attributes	removed	update	Use #update instead
+before_filter	removed	before_action	Removed in Rails 5.1
+after_filter	removed	after_action	Removed in Rails 5.1
+around_filter	removed	around_action	Removed in Rails 5.1
+skip_before_filter	removed	skip_before_action	Removed in Rails 5.1
+skip_after_filter	removed	skip_after_action	Removed in Rails 5.1
+skip_around_filter	removed	skip_around_action	Removed in Rails 5.1
+render :text	removed	render plain:	Use render plain: instead of render text:
+render :nothing	removed	head :ok	Use head :ok instead
+ActionController::Base#hide_action	removed	(none)	Removed in Rails 5.1
+attr_accessible	removed	strong_parameters	Removed in Rails 4; use params.permit in controller
+attr_protected	removed	strong_parameters	Removed in Rails 4; use params.permit in controller
+ActiveRecord::Base.raise_in_transactional_callbacks=	removed	(none)	Always raises in Rails 5+
+ActionDispatch::IntegrationTest#get (positional args)	changed	get path, params: {}	Keyword args required in Rails 5.1+
+ActionDispatch::IntegrationTest#post (positional args)	changed	post path, params: {}	Keyword args required in Rails 5.1+
+ActiveRecord::Base#find_by_*	deprecated	find_by(column: value)	Dynamic finders deprecated; use find_by hash syntax
+HashWithIndifferentAccess	moved	ActiveSupport::HashWithIndifferentAccess	Direct reference deprecated
+ActiveRecord::Base.connection	changed	ActiveRecord::Base.lease_connection	Rails 7.2 changes connection handling
+ActiveRecord::Migration	changed	ActiveRecord::Migration[7.2]	Must specify version: class MyMigration < ActiveRecord::Migration[7.2]
+ActiveRecord::Base#errors	changed	ActiveRecord::Base#errors	errors.messages returns frozen hash in Rails 7
+ActiveRecord::Relation#update_all	changed	ActiveRecord::Relation#update_all	Stricter argument validation in Rails 7
+ActionView::Helpers::FormHelper#form_for	deprecated	form_with	form_with preferred since Rails 5.1
+ActionController::Base#send_file	changed	ActionController::Base#send_file	disposition defaults changed
+ActiveRecord::Base.default_scopes	changed	ActiveRecord::Base.default_scopes	Evaluated lazily in Rails 7
+ApplicationRecord	added	(none)	Use ApplicationRecord instead of ActiveRecord::Base as parent in Rails 5+
+ActionCable	added	(none)	New in Rails 5
+ActiveStorage	added	(none)	New in Rails 5.2
+ActionText	added	(none)	New in Rails 6
+ActionMailbox	added	(none)	New in Rails 6
+Zeitwerk	changed	(autoloader)	Rails 7 requires Zeitwerk; classic autoloader removed
+ActiveRecord::Base.belongs_to_required_by_default	changed	(true)	belongs_to requires presence by default in Rails 5+
+ActiveSupport::Deprecation.silenced	changed	ActiveSupport::Deprecation.new.silenced	Per-instance deprecation handling in Rails 7
+ActiveRecord::Base.configurations	changed	ActiveRecord::Base.configurations	Returns DatabaseConfigurations object in Rails 6.1+
+ActionController::Parameters	changed	ActionController::Parameters	No longer inherits from Hash in Rails 5.1+
+ActiveRecord::Relation#or	added	(none)	New in Rails 5
+ActiveRecord::Relation#in_batches	added	(none)	New in Rails 5
+ActiveRecord::Base.left_outer_joins	added	(none)	New in Rails 5
+ActiveRecord::Relation#pick	added	(none)	New in Rails 6
+ActiveRecord::Base.insert_all	added	(none)	New in Rails 6
+ActiveRecord::Base.upsert_all	added	(none)	New in Rails 6
+ActiveRecord::Encryption	added	(none)	New in Rails 7
+ActiveRecord::Base.generates_token_for	added	(none)	New in Rails 7.1
+ActiveRecord::Relation#excluding	added	(none)	New in Rails 7; alias: without
+ActiveRecord::Base.normalizes	added	(none)	New in Rails 7.1
+ActiveRecord::Base.enum (hash syntax)	changed	enum status: { active: 0 }	Rails 7 supports: enum :status, { active: 0 }
