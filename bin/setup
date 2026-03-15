@@ -4,14 +4,14 @@ set -euo pipefail
 # Initial setup: fetches source code and builds indexes.
 #
 # Usage:
-#   bin/setup                                          # interactive
-#   bin/setup --defaults                               # Rails 5.0.7+7.2.2.2, Ruby 2.6.7+3.4.7
-#   bin/setup --rails 5.0.7 7.2.2.2 --ruby 2.6.7 3.4.7   # custom versions
+#   apidex setup                                          # interactive
+#   apidex setup --defaults                               # Rails 5.0.7+7.2.2.2, Ruby 2.6.7+3.4.7
+#   apidex setup --rails 5.0.7 7.2.2.2 --ruby 2.6.7 3.4.7   # custom versions
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: bin/setup [options]"
+  echo "Usage: apidex setup [options]"
   echo ""
   echo "Options:"
   echo "  --defaults                Use Rails 5.0.7+7.2.2.2, Ruby 2.6.7+3.4.7"
@@ -21,9 +21,9 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "  --ruby-only               Skip Rails"
   echo ""
   echo "Examples:"
-  echo "  bin/setup --defaults"
-  echo "  bin/setup --rails 6.1.7 7.2.2.2 --ruby 3.0.7 3.4.7"
-  echo "  bin/setup --rails 7.0.8 7.2.2.2 8.0.1 --ruby-only"
+  echo "  apidex setup --defaults"
+  echo "  apidex setup --rails 6.1.7 7.2.2.2 --ruby 3.0.7 3.4.7"
+  echo "  apidex setup --rails 7.0.8 7.2.2.2 8.0.1 --ruby-only"
   exit 0
 fi
 

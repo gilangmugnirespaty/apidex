@@ -4,10 +4,10 @@
 # Compatibility checker: compares API usage between two versions.
 #
 # Usage:
-#   bin/compat-check rails 5.0.7 7.2.2.2
-#   bin/compat-check ruby  2.6.7 3.4.7
-#   bin/compat-check rails 5.0.7 7.2.2.2 --project /path/to/app
-#   bin/compat-check rails 5.0.7 7.2.2.2 --api "ActiveRecord::Base#update_attributes"
+#   apidex check rails 5.0.7 7.2.2.2
+#   apidex check ruby  2.6.7 3.4.7
+#   apidex check rails 5.0.7 7.2.2.2 --project /path/to/app
+#   apidex check rails 5.0.7 7.2.2.2 --api "ActiveRecord::Base#update_attributes"
 
 BASE_DIR = File.expand_path('..', __dir__)
 
@@ -24,7 +24,7 @@ from_ver  = ARGV.shift
 to_ver    = ARGV.shift
 
 unless framework && from_ver && to_ver && %w[rails ruby].include?(framework)
-  puts "Usage: bin/compat-check <rails|ruby> <from_version> <to_version> [options]"
+  puts "Usage: apidex check <rails|ruby> <from_version> <to_version> [options]"
   puts ""
   puts "Options:"
   puts "  --project PATH   Scan project and check all APIs"
@@ -32,9 +32,9 @@ unless framework && from_ver && to_ver && %w[rails ruby].include?(framework)
   puts "  --known-only     Only show known breaking changes"
   puts ""
   puts "Examples:"
-  puts "  bin/compat-check rails 5.0.7 7.2.2.2"
-  puts "  bin/compat-check ruby 2.6.7 3.4.7"
-  puts "  bin/compat-check rails 5.0.7 7.2.2.2 --api 'ActiveRecord::Base#update_attributes'"
+  puts "  apidex check rails 5.0.7 7.2.2.2"
+  puts "  apidex check ruby 2.6.7 3.4.7"
+  puts "  apidex check rails 5.0.7 7.2.2.2 --api 'ActiveRecord::Base#update_attributes'"
   exit 1
 end
 
@@ -72,13 +72,13 @@ to_idx   = load_index(to_idx_path)
 
 unless from_idx
   $stderr.puts "ERROR: Index not found: #{from_idx_path}"
-  $stderr.puts "Run: bin/build-index #{framework} #{from_ver}"
+  $stderr.puts "Run: apidex build #{framework} #{from_ver}"
   exit 1
 end
 
 unless to_idx
   $stderr.puts "ERROR: Index not found: #{to_idx_path}"
-  $stderr.puts "Run: bin/build-index #{framework} #{to_ver}"
+  $stderr.puts "Run: apidex build #{framework} #{to_ver}"
   exit 1
 end
 

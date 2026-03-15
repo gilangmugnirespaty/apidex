@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# apidex — Local API index and compatibility checker for Rails and Ruby.
+#
+# Usage:
+#   apidex <command> [options]
+#
+# Commands:
+#   lookup   Fast API lookup against a version index
+#   history  Track an API across all indexed versions
+#   check    Compare API compatibility between two versions
+#   scan     Scan a Rails project for API usage
+#   fetch    Download Rails or Ruby source by version
+#   build    Generate API indexes from source
+#   setup    First-time setup (fetch + build)
+#
+# Examples:
+#   apidex lookup rails 7.2.2.2 "where"
+#   apidex history rails "update_attributes"
+#   apidex check rails 5.0.7 7.2.2.2 --api "update_attributes"
+#   apidex scan /path/to/project
+#   apidex fetch rails 8.0.1
+#   apidex build all
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION="1.0.0"
+
+show_help() {
+  echo "apidex $VERSION — Local API index for Rails and Ruby"
+  echo ""
+  echo "Usage: apidex <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  lookup    Fast API lookup against a version index"
+  echo "  history   Track an API across all indexed versions"
+  echo "  check     Compare API compatibility between two versions"
+  echo "  scan      Scan a Rails project for API usage"
+  echo "  fetch     Download Rails or Ruby source by version"
+  echo "  build     Generate API indexes from source"
+  echo "  setup     First-time setup (fetch sources + build indexes)"
+  echo ""
+  echo "Examples:"
+  echo "  apidex lookup rails 7.2.2.2 'where'"
+  echo "  apidex lookup --exact ruby 3.4.7 'Array#filter_map'"
+  echo "  apidex history rails 'update_attributes'"
+  echo "  apidex check rails 5.0.7 7.2.2.2 --api 'update_attributes'"
+  echo "  apidex check ruby 2.6.7 3.4.7 --known-only"
+  echo "  apidex scan /path/to/project"
+  echo "  apidex fetch rails 8.0.1"
+  echo "  apidex build all"
+  echo "  apidex setup --defaults"
+  echo ""
+  echo "Run 'apidex <command> --help' for command-specific help."
+}
+
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+  lookup)   shift; exec "$BASE_DIR/bin/api-lookup"    "$@" ;;
+  history)  shift; exec "$BASE_DIR/bin/api-history"   "$@" ;;
+  check)    shift; exec "$BASE_DIR/bin/compat-check"  "$@" ;;
+  scan)     shift; exec "$BASE_DIR/bin/scan-project"  "$@" ;;
+  fetch)    shift; exec "$BASE_DIR/bin/fetch-source"  "$@" ;;
+  build)    shift; exec "$BASE_DIR/bin/build-index"   "$@" ;;
+  setup)    shift; exec "$BASE_DIR/bin/setup"         "$@" ;;
+  --help|-h|help)
+    show_help
+    ;;
+  --version|-v)
+    echo "apidex $VERSION"
+    ;;
+  "")
+    show_help
+    exit 1
+    ;;
+  *)
+    echo "Unknown command: $COMMAND"
+    echo "Run 'apidex --help' for available commands."
+    exit 1
+    ;;
+esac

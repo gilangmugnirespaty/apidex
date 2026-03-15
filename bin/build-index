@@ -4,9 +4,9 @@
 # Builds a compact API index from source code.
 #
 # Usage:
-#   bin/build-index rails 5.0.7
-#   bin/build-index ruby  2.6.7
-#   bin/build-index all          # builds all downloaded versions
+#   apidex build rails 5.0.7
+#   apidex build ruby  2.6.7
+#   apidex build all          # builds all downloaded versions
 
 require_relative '../lib/source_parser'
 
@@ -16,7 +16,7 @@ def build_one(framework, version)
   src_dir = File.join(BASE_DIR, "#{framework}-src", version)
   unless Dir.exist?(src_dir)
     $stderr.puts "ERROR: Source not found: #{src_dir}"
-    $stderr.puts "       Run: bin/fetch-source #{framework} #{version}"
+    $stderr.puts "       Run: apidex fetch #{framework} #{version}"
     return false
   end
 
@@ -53,8 +53,8 @@ end
 # --- main -----------------------------------------------------------------
 
 if ARGV.empty? || ARGV[0] == '--help'
-  puts "Usage: bin/build-index <rails|ruby> <version>"
-  puts "       bin/build-index all"
+  puts "Usage: apidex build <rails|ruby> <version>"
+  puts "       apidex build all"
   exit 0
 end
 
@@ -64,7 +64,7 @@ else
   framework = ARGV[0]
   version   = ARGV[1]
   unless version
-    $stderr.puts "Error: version required. e.g. bin/build-index rails 5.0.7"
+    $stderr.puts "Error: version required. e.g. apidex build rails 5.0.7"
     exit 1
   end
   exit(build_one(framework, version) ? 0 : 1)

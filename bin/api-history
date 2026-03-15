@@ -4,10 +4,10 @@ set -euo pipefail
 # Shows the history of an API across ALL indexed versions.
 #
 # Usage:
-#   bin/api-history rails "update_attributes"
-#   bin/api-history ruby  "Hash#except"
-#   bin/api-history rails "ActiveRecord::QueryMethods#where"
-#   bin/api-history ruby  "filter_map"
+#   apidex history rails "update_attributes"
+#   apidex history ruby  "Hash#except"
+#   apidex history rails "ActiveRecord::QueryMethods#where"
+#   apidex history ruby  "filter_map"
 #
 # Options:
 #   --exact   Only match fully-qualified names
@@ -20,14 +20,14 @@ while [[ "${1:-}" == --* || "${1:-}" == -* ]]; do
   case "$1" in
     --exact) EXACT=1; shift ;;
     --help|-h)
-      echo "Usage: bin/api-history [--exact] <rails|ruby> <query>"
+      echo "Usage: apidex history [--exact] <rails|ruby> <query>"
       echo ""
       echo "Shows the presence/absence of an API across ALL indexed versions."
       echo ""
       echo "Examples:"
-      echo "  bin/api-history rails 'update_attributes'"
-      echo "  bin/api-history ruby  'Hash#except'"
-      echo "  bin/api-history rails 'ActiveRecord::QueryMethods#where'"
+      echo "  apidex history rails 'update_attributes'"
+      echo "  apidex history ruby  'Hash#except'"
+      echo "  apidex history rails 'ActiveRecord::QueryMethods#where'"
       exit 0
       ;;
     *) echo "Unknown flag: $1"; exit 1 ;;
@@ -38,8 +38,8 @@ FRAMEWORK="${1:-}"
 QUERY="${2:-}"
 
 if [[ -z "$FRAMEWORK" || -z "$QUERY" ]]; then
-  echo "Usage: bin/api-history [--exact] <rails|ruby> <query>"
-  echo "Run 'bin/api-history --help' for more info."
+  echo "Usage: apidex history [--exact] <rails|ruby> <query>"
+  echo "Run 'apidex history --help' for more info."
   exit 1
 fi
 
@@ -52,7 +52,7 @@ IDX_DIR="$BASE_DIR/indexes/$FRAMEWORK"
 
 if [[ ! -d "$IDX_DIR" ]]; then
   echo "ERROR: No indexes found for $FRAMEWORK"
-  echo "Run: bin/fetch-source $FRAMEWORK <version> && bin/build-index $FRAMEWORK <version>"
+  echo "Run: apidex fetch $FRAMEWORK <version> && apidex build $FRAMEWORK <version>"
   exit 1
 fi
 

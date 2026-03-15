@@ -1,6 +1,6 @@
-# rails-ruby-docs
+# apidex
 
-Local API documentation and compatibility checker for Rails and Ruby version upgrades.
+Local API index and compatibility checker for Rails and Ruby version upgrades.
 
 Fast, offline, grep-based lookups. No external documentation websites needed.
 
@@ -13,13 +13,13 @@ When upgrading Rails or Ruby, you need answers to:
 - What replaced this deprecated method?
 - Will my code break after upgrading?
 
-Reading online docs or full source files is slow and expensive (especially for AI coding assistants that pay per token). This tool gives you the same answers in **under a second** with **1-5 lines of output**.
+Reading online docs or full source files is slow and expensive (especially for AI coding assistants that pay per token). apidex gives you the same answers in **under a second** with **1-5 lines of output**.
 
 ## How It Works
 
 1. **Download** Rails/Ruby source code for the versions you care about
 2. **Index** the source into compact, grep-friendly `.idx` files
-3. **Query** the indexes with simple CLI tools
+3. **Query** the indexes with simple CLI commands
 
 Index format (pipe-delimited, one entry per line):
 
@@ -31,26 +31,33 @@ imethod|ActiveRecord::Persistence#save|save(**options, &block)|activerecord/lib/
 ## Quick Start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/rails-ruby-docs.git
-cd rails-ruby-docs
+git clone https://github.com/YOUR_USERNAME/apidex.git
+cd apidex
 
 # Setup with common upgrade versions
-bin/setup --defaults
+bin/apidex setup --defaults
 # Fetches Rails 5.0.7 + 7.2.2.2 and Ruby 2.6.7 + 3.4.7
 # Then builds all indexes (~2 minutes)
 
-# Or fetch specific versions
-bin/fetch-source rails 6.1.7
-bin/fetch-source ruby 3.2.0
-bin/build-index all
+# Or pick your own versions
+bin/apidex setup --rails 6.1.7 7.2.2.2 --ruby 3.0.7 3.4.7
 ```
 
 ### Requirements
 
-- **bash** (macOS/Linux)
+- **bash** (macOS / Linux)
 - **Ruby** 2.6+ (for the index builder and compatibility checker)
 - **curl** (for downloading source tarballs)
-- **grep** (ripgrep recommended but not required)
+
+### Optional: Add to PATH
+
+```bash
+# Add this to your ~/.bashrc or ~/.zshrc:
+export PATH="$HOME/path/to/apidex/bin:$PATH"
+
+# Then use from anywhere:
+apidex lookup rails 7.2.2.2 "where"
+```
 
 ## Usage
 
@@ -58,16 +65,16 @@ bin/build-index all
 
 ```bash
 # Partial search (finds all matches containing the query)
-bin/api-lookup rails 7.2.2.2 "where"
+apidex lookup rails 7.2.2.2 "where"
 
-# Exact match
-bin/api-lookup --exact rails 7.2.2.2 "ActiveRecord::QueryMethods#where"
+# Exact match on fully-qualified name
+apidex lookup --exact rails 7.2.2.2 "ActiveRecord::QueryMethods#where"
 
 # Just file locations
-bin/api-lookup --files ruby 3.4.7 "Hash#except"
+apidex lookup --files ruby 3.4.7 "Hash#except"
 
 # Count matches
-bin/api-lookup --count rails 5.0.7 "before_filter"
+apidex lookup --count rails 5.0.7 "before_filter"
 ```
 
 **Output:**
@@ -76,22 +83,24 @@ FOUND in rails 7.2.2.2:
 imethod|ActiveRecord::QueryMethods#where|where(*args)|activerecord/lib/active_record/relation/query_methods.rb:1011
 ```
 
-Or simply:
+Or:
 ```
 NOT_FOUND: filter_map in ruby 2.6.7
 ```
 
+Exit codes: `0` = found, `1` = not found, `2` = usage error.
+
 ### Track an API Across Versions
 
 ```bash
-bin/api-history rails "update_attributes"
+apidex history rails "update_attributes"
 ```
 
 **Output:**
 ```
 API HISTORY: update_attributes
 Framework:   rails
-  Known: removed -> use update (Deprecated in Rails 5, removed in Rails 6.1)
+  Known: removed → use update (Deprecated in Rails 5, removed in Rails 6.1)
 ---
   5.0.7         FOUND  imethod  [update_attributes] ...
   6.1.7.10      NOT_FOUND
@@ -103,22 +112,22 @@ Framework:   rails
 
 ```bash
 # Check a single API
-bin/compat-check rails 5.0.7 7.2.2.2 --api "update_attributes"
+apidex check rails 5.0.7 7.2.2.2 --api "update_attributes"
 
 # Show all known breaking changes
-bin/compat-check rails 5.0.7 7.2.2.2 --known-only
+apidex check rails 5.0.7 7.2.2.2 --known-only
 
 # Check Ruby compatibility
-bin/compat-check ruby 2.6.7 3.4.7 --api "Hash#except"
+apidex check ruby 2.6.7 3.4.7 --api "Hash#except"
 
 # Scan an entire project
-bin/compat-check rails 5.0.7 7.2.2.2 --project /path/to/your/app
+apidex check rails 5.0.7 7.2.2.2 --project /path/to/your/app
 ```
 
 **Output:**
 ```
 ============================================================
-COMPATIBILITY REPORT: rails 5.0.7 -> 7.2.2.2
+COMPATIBILITY REPORT: rails 5.0.7 → 7.2.2.2
 ============================================================
 
 KNOWN BREAKING CHANGES (2):
@@ -137,39 +146,40 @@ REMOVED APIs (in 5.0.7, not in 7.2.2.2): 1
 ### Scan a Project
 
 ```bash
-bin/scan-project /path/to/your/rails/app
-bin/scan-project /path/to/your/rails/app --rails-version 5.0.7
+apidex scan /path/to/your/rails/app
+apidex scan /path/to/your/rails/app --rails-version 5.0.7
 ```
 
 ## Adding Versions
 
 ```bash
-# Fetch and index a new version
-bin/fetch-source rails 8.0.1
-bin/build-index rails 8.0.1
+apidex fetch rails 8.0.1
+apidex build rails 8.0.1
 
 # All tools automatically pick up new versions
-bin/api-history rails "some_method"  # now includes 8.0.1
+apidex history rails "some_method"  # now includes 8.0.1
 ```
 
-### Supported Version Ranges
+### Supported Versions
 
 Any released version with a GitHub tag:
 
-- **Rails**: Any tag from [github.com/rails/rails/tags](https://github.com/rails/rails/tags) (e.g., 4.2.11, 5.0.7, 6.1.7, 7.0.8, 7.2.2.2, 8.0.1)
-- **Ruby**: Any tag from [github.com/ruby/ruby/tags](https://github.com/ruby/ruby/tags) (e.g., 2.6.7, 2.7.8, 3.0.7, 3.1.6, 3.2.6, 3.3.6, 3.4.2)
+- **Rails**: [github.com/rails/rails/tags](https://github.com/rails/rails/tags) (e.g., 4.2.11, 5.0.7, 6.1.7, 7.0.8, 7.2.2.2, 8.0.1)
+- **Ruby**: [github.com/ruby/ruby/tags](https://github.com/ruby/ruby/tags) (e.g., 2.6.7, 2.7.8, 3.0.7, 3.1.6, 3.2.6, 3.3.6, 3.4.2)
 
-## Tools Reference
+## Commands
 
-| Tool | Purpose | Speed |
-|------|---------|-------|
-| `bin/api-lookup` | Single API check | ~100ms |
-| `bin/api-history` | API across all versions | ~500ms |
-| `bin/compat-check` | Version comparison | ~1-10s |
-| `bin/scan-project` | Project API scanner | ~2-10s |
-| `bin/fetch-source` | Download source code | ~30s |
-| `bin/build-index` | Generate API index | ~5-30s |
-| `bin/setup` | First-time setup | ~2min |
+| Command | Purpose | Speed |
+|---------|---------|-------|
+| `apidex lookup` | Single API check | ~100ms |
+| `apidex history` | API across all versions | ~500ms |
+| `apidex check` | Version comparison | ~1-10s |
+| `apidex scan` | Project API scanner | ~2-10s |
+| `apidex fetch` | Download source code | ~30s |
+| `apidex build` | Generate API index | ~5-30s |
+| `apidex setup` | First-time setup | ~2min |
+
+Run `apidex <command> --help` for command-specific options.
 
 ## Known Breaking Changes
 
@@ -183,43 +193,36 @@ Format:
 API_NAME	STATUS	REPLACEMENT	NOTE
 ```
 
-Contributions welcome! Add entries for version ranges you've dealt with.
+Contributions welcome — add entries for version ranges you've dealt with.
 
-## Claude Code Integration
+## AI Assistant Integration
 
-This system is designed for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and similar AI coding assistants.
+apidex is designed for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and similar AI coding assistants. See [CLAUDE.md](CLAUDE.md) for integration details.
 
-See [CLAUDE.md](CLAUDE.md) for integration instructions. When this repo is cloned to your machine, Claude Code automatically reads `CLAUDE.md` and knows to use the local tools instead of fetching external documentation.
-
-**Priority order** (fastest to slowest):
-
-1. `bin/api-lookup` — quick yes/no check (~100ms, 1-3 lines)
-2. `bin/api-history` — version timeline (~500ms)
-3. `bin/compat-check --api` — detailed comparison with replacements
-4. `known-changes/*.tsv` — curated breaking changes
-5. Read source files — only when implementation details matter
+When this repo is cloned to your machine, Claude Code automatically reads `CLAUDE.md` and uses the local tools instead of fetching external documentation.
 
 ## Architecture
 
 ```
-rails-ruby-docs/
-├── bin/                    # CLI tools
-│   ├── setup              # One-time setup
-│   ├── fetch-source       # Download source by version
-│   ├── build-index        # Parse source -> .idx files
-│   ├── api-lookup         # Fast grep-based lookup
-│   ├── api-history        # Track API across versions
-│   ├── scan-project       # Scan Rails project for APIs
-│   └── compat-check       # Compare versions
+apidex/
+├── bin/
+│   ├── apidex             Main CLI entry point
+│   ├── api-lookup         Fast grep-based lookup
+│   ├── api-history        Track API across versions
+│   ├── compat-check       Compare versions
+│   ├── scan-project       Scan Rails project for APIs
+│   ├── fetch-source       Download source by version
+│   ├── build-index        Parse source → .idx files
+│   └── setup              First-time setup
 ├── lib/
-│   └── source_parser.rb   # Ruby + C source parser
-├── indexes/               # Generated .idx files (git-ignored)
+│   └── source_parser.rb   Ruby + C source parser
+├── indexes/               Generated .idx files (git-ignored)
 │   ├── rails/
 │   └── ruby/
-├── rails-src/             # Downloaded source (git-ignored)
-├── ruby-src/              # Downloaded source (git-ignored)
-├── known-changes/         # Curated breaking changes
-├── CLAUDE.md              # AI assistant integration guide
+├── rails-src/             Downloaded source (git-ignored)
+├── ruby-src/              Downloaded source (git-ignored)
+├── known-changes/         Curated breaking changes (TSV)
+├── CLAUDE.md              AI assistant integration guide
 └── README.md
 ```
 
@@ -230,8 +233,7 @@ rails-ruby-docs/
 - `def` / `def self.` methods (instance + class methods)
 - `class << self` eigenclass methods
 - `attr_reader` / `attr_writer` / `attr_accessor`
-- `alias` / `alias_method`
-- `delegate` methods
+- `alias` / `alias_method` / `delegate`
 
 **From C (`.c`) files** (Ruby core):
 - `rb_define_method` / `rb_define_singleton_method`
@@ -253,16 +255,6 @@ rails-ruby-docs/
 2. Add known-changes entries for version ranges you've worked with
 3. Improve the parser to capture more patterns
 4. Submit a PR
-
-### Adding Known Changes
-
-Edit files in `known-changes/` following the TSV format:
-
-```
-API_NAME\tSTATUS\tREPLACEMENT\tNOTE
-```
-
-Status values: `removed`, `deprecated`, `changed`, `renamed`, `moved`, `added`
 
 ## License
 

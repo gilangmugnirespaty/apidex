@@ -4,10 +4,10 @@ set -euo pipefail
 # Fast API lookup against the local index.
 #
 # Usage:
-#   bin/api-lookup rails 7.2.2.2 "ActiveRecord::Relation#where"
-#   bin/api-lookup ruby  3.4.7   "Array#filter_map"
-#   bin/api-lookup rails 5.0.7   "ActiveRecord::Base"          # class lookup
-#   bin/api-lookup rails 5.0.7   "update_attributes"           # partial search
+#   apidex lookup rails 7.2.2.2 "ActiveRecord::Relation#where"
+#   apidex lookup ruby  3.4.7   "Array#filter_map"
+#   apidex lookup rails 5.0.7   "ActiveRecord::Base"          # class lookup
+#   apidex lookup rails 5.0.7   "update_attributes"           # partial search
 #
 # Options:
 #   --exact   Only match fully-qualified names (default: partial match)
@@ -34,7 +34,7 @@ while [[ "${1:-}" == --* || "${1:-}" == -* ]]; do
     --files) FILES=1; shift ;;
     --count) COUNT=1; shift ;;
     --help|-h)
-      echo "Usage: bin/api-lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
+      echo "Usage: apidex lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
       echo ""
       echo "Fast API lookup against the local index."
       echo ""
@@ -46,9 +46,9 @@ while [[ "${1:-}" == --* || "${1:-}" == -* ]]; do
       echo "Exit codes: 0=found, 1=not found, 2=usage error"
       echo ""
       echo "Examples:"
-      echo "  bin/api-lookup rails 7.2.2.2 'where'                        # partial"
-      echo "  bin/api-lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
-      echo "  bin/api-lookup --files ruby 3.4.7 'Hash#except'"
+      echo "  apidex lookup rails 7.2.2.2 'where'                        # partial"
+      echo "  apidex lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
+      echo "  apidex lookup --files ruby 3.4.7 'Hash#except'"
       exit 0
       ;;
     *) echo "Unknown flag: $1"; exit 2 ;;
@@ -60,13 +60,13 @@ VERSION="${2:-}"
 QUERY="${3:-}"
 
 if [[ -z "$FRAMEWORK" || -z "$VERSION" || -z "$QUERY" ]]; then
-  echo "Usage: bin/api-lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
+  echo "Usage: apidex lookup [--exact] [--files] [--count] <rails|ruby> <version> <query>"
   echo ""
   echo "Examples:"
-  echo "  bin/api-lookup rails 7.2.2.2 'where'                        # partial"
-  echo "  bin/api-lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
-  echo "  bin/api-lookup --files ruby 3.4.7 'Hash#except'"
-  echo "  bin/api-lookup --count rails 5.0.7 'before_filter'"
+  echo "  apidex lookup rails 7.2.2.2 'where'                        # partial"
+  echo "  apidex lookup --exact rails 7.2.2.2 'ActiveRecord::QueryMethods#where'"
+  echo "  apidex lookup --files ruby 3.4.7 'Hash#except'"
+  echo "  apidex lookup --count rails 5.0.7 'before_filter'"
   exit 2
 fi
 
@@ -79,7 +79,7 @@ IDX_FILE="$BASE_DIR/indexes/$FRAMEWORK/$VERSION.idx"
 
 if [[ ! -f "$IDX_FILE" ]]; then
   echo "INDEX_NOT_FOUND: $FRAMEWORK $VERSION"
-  echo "Run: bin/fetch-source $FRAMEWORK $VERSION && bin/build-index $FRAMEWORK $VERSION"
+  echo "Run: apidex fetch $FRAMEWORK $VERSION && apidex build $FRAMEWORK $VERSION"
   exit 2
 fi
 

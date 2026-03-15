@@ -4,22 +4,22 @@ set -euo pipefail
 # Downloads Rails or Ruby source code by version.
 #
 # Usage:
-#   bin/fetch-source rails 5.0.7
-#   bin/fetch-source rails 7.2.2.2
-#   bin/fetch-source ruby  2.6.7
-#   bin/fetch-source ruby  3.4.7
+#   apidex fetch rails 5.0.7
+#   apidex fetch rails 7.2.2.2
+#   apidex fetch ruby  2.6.7
+#   apidex fetch ruby  3.4.7
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: bin/fetch-source <rails|ruby> <version>"
+  echo "Usage: apidex fetch <rails|ruby> <version>"
   echo ""
   echo "Downloads source code from GitHub for the given version."
   echo "Prunes test/doc directories to save disk space."
   echo ""
   echo "Examples:"
-  echo "  bin/fetch-source rails 7.2.2.2"
-  echo "  bin/fetch-source ruby 3.4.7"
+  echo "  apidex fetch rails 7.2.2.2"
+  echo "  apidex fetch ruby 3.4.7"
   echo ""
   echo "Available tags:"
   echo "  Rails: https://github.com/rails/rails/tags"
@@ -31,8 +31,8 @@ FRAMEWORK="${1:-}"
 VERSION="${2:-}"
 
 if [[ -z "$FRAMEWORK" || -z "$VERSION" ]]; then
-  echo "Usage: bin/fetch-source <rails|ruby> <version>"
-  echo "Run 'bin/fetch-source --help' for more info."
+  echo "Usage: apidex fetch <rails|ruby> <version>"
+  echo "Run 'apidex fetch --help' for more info."
   exit 1
 fi
 
