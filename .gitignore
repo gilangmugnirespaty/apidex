@@ -26,3 +26,6 @@ Thumbs.db
 # Temp files
 /tmp/
 *.tar.gz
+
+# Scan results (per-project, not checked in)
+/result/

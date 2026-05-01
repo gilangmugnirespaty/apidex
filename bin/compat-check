@@ -101,28 +101,100 @@ end
 
 known = load_known_changes(BASE_DIR, framework, from_ver, to_ver)
 
-# --- determine APIs to check ----------------------------------------------
+# --- bare-name lookup --------------------------------------------------
+# Maps both full keys ("ActiveRecord::Persistence#update_attributes") and
+# bare method names ("update_attributes") to the list of full index keys
+# that satisfy them. Lets us answer "is this api in the index?" in O(1)
+# even when scanning a project that mostly emits bare identifiers.
 
-apis_to_check = Set.new
+def build_bare_index(idx)
+  bare = Hash.new { |h, k| h[k] = [] }
+  idx.each_key do |k|
+    bare[k] << k unless bare[k].include?(k)
+    if k =~ /[#.]([\w!?=]+)\z/
+      bare[$1] << k unless bare[$1].include?(k)
+    end
+  end
+  bare
+end
+
+from_bare = build_bare_index(from_idx)
+to_bare   = build_bare_index(to_idx)
+
+# Method names too generic to method-suffix-match against TSV. Without this
+# guard, a TSV entry like `Hash#each` matches every `Foo.each` in code.
+# Reserve these names for exact-match TSV keys only.
+GENERIC_METHODS = %w[
+  each open name match call start length size count first last to_s to_i to_a
+  to_h to_sym to_proc to_str to_f new initialize dup clone send public_send
+  map collect select reject filter find detect reduce inject sort reverse
+  include? nil? empty? blank? present? frozen? freeze tap then yield_self
+  respond_to? method methods class hash eql? equal? format encode unpack pack
+  read write open print puts puts! load dump parse generate now today value
+].to_set.freeze
+
+# Known-changes lookup. Stricter than from/to index diff to avoid bare-word
+# noise (otherwise a bare "connection" matches qualified TSV "AR::Base.connection").
+#   known_full         — exact TSV key match
+#   known_method_only  — method-name suffix → qualified TSV keys (for matching Foo.bar style)
+#   known_bare_dsl     — truly bare TSV keys (e.g., "before_filter", "attr_accessible")
+known_full        = {}
+known_method_only = Hash.new { |h, k| h[k] = [] }
+known_bare_dsl    = {}
+known.each_key do |k|
+  known_full[k] = true
+  if k =~ /[#.]([\w!?=]+)\z/
+    method = $1
+    # Only allow method-suffix matching when the method name is distinctive
+    # enough to be worth the false-positive risk. Generic Ruby methods get
+    # exact-only matching via known_full.
+    known_method_only[method] << k unless GENERIC_METHODS.include?(method)
+  elsif k =~ /\A[A-Za-z_][\w]*[!?=]?\z/
+    known_bare_dsl[k] = true
+  end
+  # else: class-only refs (Zeitwerk, ActionCable) and compound phrases
+  # ("render :text") only match exact via known_full.
+end
+
+# --- determine APIs to check ----------------------------------------------
+# apis_to_check maps api-name => [{file:, line:}, ...] of usage locations.
+# Locations are empty for non-project modes.
+
+apis_to_check = Hash.new { |h, k| h[k] = [] }
 
 if single_api
-  apis_to_check << single_api
+  apis_to_check[single_api]  # trigger default proc
 elsif project_dir
-  # Scan project using ripgrep — use shellescape to prevent injection
   require 'shellwords'
-  dirs = %w[app lib config].map { |d| File.join(project_dir, d) }
-                            .select { |d| Dir.exist?(d) }
-                            .map { |d| Shellwords.escape(d) }
+  dirs = %w[app lib config db/migrate].map { |d| File.join(project_dir, d) }
+                                       .select { |d| Dir.exist?(d) }
+                                       .map { |d| Shellwords.escape(d) }
   if dirs.any?
-    scan_cmd = "rg --no-heading -oN '[A-Z][\\w:]+([#.][\\w!?=]+)' --type ruby #{dirs.join(' ')} 2>/dev/null || true"
+    # Three alternatives:
+    #   1. Qualified refs: Foo, Foo::Bar, Foo#bar, Foo.bar
+    #   2. Uppercase globals: $SAFE, $KCODE, $DEBUG
+    #   3. Bare identifiers: update_attributes, before_filter, present?, save!, ...
+    # Output format from rg -on: path:line:match
+    pattern = '[A-Z][\\w:]+(?:[#.][\\w!?=]+)?|\\$[A-Z][A-Z0-9_]*|[a-z_][\\w]*[!?=]?'
+    scan_cmd = "rg --no-heading -on '#{pattern}' --type ruby #{dirs.join(' ')} 2>/dev/null || true"
     results = `#{scan_cmd}`
-    results.each_line { |l| apis_to_check << l.strip unless l.strip.empty? }
+    results.each_line do |line|
+      path, line_num, api = line.chomp.split(':', 3)
+      next unless api
+      api.strip!
+      next if api.empty?
+      # Skip pure local-variable noise that can never match a Rails API.
+      # (Filtering happens naturally during lookup, but pre-filtering keeps
+      # apis_to_check small for the report.)
+      next unless from_bare.key?(api) || to_bare.key?(api) || known_full[api] || known_bare_dsl[api] || known_method_only.key?(api[/[#.]([\w!?=]+)\z/, 1] || '')
+      apis_to_check[api] << { file: path, line: line_num.to_i }
+    end
+    $stderr.puts "Scanned #{apis_to_check.size} unique Rails APIs across #{apis_to_check.values.sum(&:size)} usages"
   else
     $stderr.puts "WARNING: No app/, lib/, config/ directories found in #{project_dir}"
   end
 else
-  # Compare all APIs: find what's in from but not in to
-  from_idx.each_key { |name| apis_to_check << name }
+  from_idx.each_key { |name| apis_to_check[name] }
 end
 
 # --- check compatibility -------------------------------------------------
@@ -132,61 +204,115 @@ added     = []  # in to, not in from
 changed   = []  # in both but signature changed
 known_brk = []  # known breaking changes
 
-def match_api?(index_key, query)
-  return true if index_key == query
-  # Match method short name: "update_attributes" matches "Foo#update_attributes"
-  return true if index_key.end_with?("##{query}") || index_key.end_with?(".#{query}")
-  false
-end
+apis_to_check.each do |api, locations|
+  # "Qualified" here means: structured enough that we trust the index lookup.
+  # Class refs (Foo), namespaced (Foo::Bar), and method refs (Foo#bar / Foo.bar).
+  # Bare lowercase tokens like `next`, `connection`, `errors` are NOT qualified.
+  qualified = api =~ /[A-Z]/ || api.include?('::') || api.include?('#') || api.include?('.')
+  method_name = api[/[#.]([\w!?=]+)\z/, 1]
 
-apis_to_check.each do |api|
-  # Check known changes — exact or method-name match only
-  if known.key?(api)
-    known_brk << { api: api, **known[api] }
-  else
-    known.each do |pattern, info|
-      # Only match if the known pattern IS the api name or ends with #/. + api
-      if match_api?(api, pattern) || match_api?(pattern, api)
-        known_brk << { api: api, **info }
-      end
-    end
+  # --- Known breaking changes ---
+  matched_keys = []
+  matched_keys << api if known_full[api]
+  if qualified && method_name
+    matched_keys.concat(known_method_only[method_name])
+  elsif !qualified && known_bare_dsl[api]
+    # Bare DSL (e.g., before_filter) — exact bare-key match.
+    matched_keys << api
+  end
+  matched_keys.uniq.each do |full_key|
+    known_brk << { api: api, full_key: full_key, **known[full_key], locations: locations }
   end
 
   next if known_only
 
-  in_from = from_idx.keys.any? { |k| match_api?(k, api) }
-  in_to   = to_idx.keys.any?   { |k| match_api?(k, api) }
+  # --- Index diff (removed/added/changed) ---
+  # Only meaningful for method references (Foo#bar, Foo.bar). Bare tokens and
+  # class-only refs produce too many false positives:
+  #   - Bare names (`next`, `json`, `uniq`) match first-found suffix entries
+  #     in the Rails source index.
+  #   - Class refs (`URI`, `Method`, `ApplicationRecord`) are reopens of Ruby
+  #     stdlib or generator templates — not real removals.
+  # Curated bare/class flagging lives in the known-changes TSV instead.
+  next unless api.include?('#') || api.include?('.')
+
+  from_keys = from_bare[api]
+  to_keys   = to_bare[api]
+  in_from = from_keys.any?
+  in_to   = to_keys.any?
 
   if in_from && !in_to
-    from_entry = from_idx.find { |k, _| match_api?(k, api) }
-    removed << { api: api, from_entry: from_entry }
+    full = from_keys.first
+    removed << { api: api, full_key: full, from_entry: from_idx[full], locations: locations }
   elsif !in_from && in_to
-    to_entry = to_idx.find { |k, _| match_api?(k, api) }
-    added << { api: api, to_entry: to_entry }
+    full = to_keys.first
+    added << { api: api, full_key: full, to_entry: to_idx[full], locations: locations }
   elsif in_from && in_to
-    from_entry = from_idx.find { |k, _| match_api?(k, api) }
-    to_entry   = to_idx.find { |k, _| match_api?(k, api) }
-    if from_entry && to_entry && from_entry[1][:sig] != to_entry[1][:sig]
-      changed << { api: api, from_sig: from_entry[1][:sig], to_sig: to_entry[1][:sig] }
+    from_full = from_keys.first
+    to_full   = to_keys.first
+    if from_idx[from_full][:sig] != to_idx[to_full][:sig]
+      changed << {
+        api: api,
+        from_sig: from_idx[from_full][:sig],
+        to_sig: to_idx[to_full][:sig],
+        locations: locations,
+      }
     end
   end
+end
+
+# --- tee output to result/ when scanning a project ----------------------
+
+class Tee
+  def initialize(*ios); @ios = ios; end
+  def write(str); @ios.each { |io| io.write(str) }; str.to_s.bytesize; end
+  def puts(*args); @ios.each { |io| io.puts(*args) }; nil; end
+  def print(*args); @ios.each { |io| io.print(*args) }; nil; end
+  def <<(str); write(str.to_s); self; end
+  def flush; @ios.each(&:flush); end
+end
+
+result_path = nil
+if project_dir
+  basename = File.basename(File.expand_path(project_dir))
+  result_dir = File.join(BASE_DIR, 'result')
+  Dir.mkdir(result_dir) unless Dir.exist?(result_dir)
+  suffix = known_only ? '-known-only' : ''
+  result_path = File.join(result_dir, "#{basename}-#{framework}-#{from_ver}-to-#{to_ver}#{suffix}-raw-report.txt")
+  result_file = File.open(result_path, 'w')
+  result_file.sync = true
+  $stdout = Tee.new(STDOUT, result_file)
+  at_exit { result_file.close rescue nil }
 end
 
 # --- output report --------------------------------------------------------
 
 puts "=" * 60
 puts "COMPATIBILITY REPORT: #{framework} #{from_ver} → #{to_ver}"
+puts "Project: #{File.expand_path(project_dir)}" if project_dir
+puts "Scanned: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}"
 puts "=" * 60
+
+def print_locations(locations, max: 10)
+  return if locations.nil? || locations.empty?
+  puts "    Used at:"
+  locations.first(max).each { |loc| puts "      #{loc[:file]}:#{loc[:line]}" }
+  puts "      ... (#{locations.size - max} more)" if locations.size > max
+end
 
 if known_brk.any?
   puts ""
-  puts "KNOWN BREAKING CHANGES (#{known_brk.size}):"
+  # Dedup by api-name; merge known-change entries that resolve to the same name.
+  by_api = known_brk.group_by { |k| k[:api] }
+  puts "KNOWN BREAKING CHANGES (#{by_api.size}):"
   puts "-" * 40
-  known_brk.uniq { |k| k[:api] }.each do |entry|
-    puts "  #{entry[:api]}"
-    puts "    Status:      #{entry[:status]}"
-    puts "    Replacement: #{entry[:replacement]}" unless entry[:replacement].to_s.empty?
-    puts "    Note:        #{entry[:note]}" unless entry[:note].to_s.empty?
+  by_api.each do |api, entries|
+    primary = entries.first
+    puts "  #{api}#{primary[:locations].any? ? " (#{primary[:locations].size} usages)" : ''}"
+    puts "    Status:      #{primary[:status]}"
+    puts "    Replacement: #{primary[:replacement]}" unless primary[:replacement].to_s.empty?
+    puts "    Note:        #{primary[:note]}" unless primary[:note].to_s.empty?
+    print_locations(primary[:locations])
     puts ""
   end
 end
@@ -196,11 +322,15 @@ unless known_only
     puts ""
     puts "REMOVED APIs (in #{from_ver}, not in #{to_ver}): #{removed.size}"
     puts "-" * 40
-    removed.first(50).each do |entry|
-      puts "  #{entry[:api]}"
+    # Sort: APIs actually used in the project first, by usage count descending.
+    sorted = removed.sort_by { |e| -e[:locations].size }
+    sorted.first(50).each do |entry|
+      usage_note = entry[:locations].any? ? " (#{entry[:locations].size} usages)" : ""
+      puts "  #{entry[:api]}#{usage_note}"
       if entry[:from_entry]
-        puts "    Was at: #{entry[:from_entry][1][:location]}"
+        puts "    Was at: #{entry[:from_entry][:location]}"
       end
+      print_locations(entry[:locations])
     end
     puts "  ... (#{removed.size - 50} more)" if removed.size > 50
   end
@@ -216,12 +346,15 @@ unless known_only
 
   if changed.any?
     puts ""
+    sorted = changed.sort_by { |e| -e[:locations].size }
     puts "SIGNATURE CHANGES: #{changed.size}"
     puts "-" * 40
-    changed.first(30).each do |entry|
-      puts "  #{entry[:api]}"
+    sorted.first(30).each do |entry|
+      usage_note = entry[:locations].any? ? " (#{entry[:locations].size} usages)" : ""
+      puts "  #{entry[:api]}#{usage_note}"
       puts "    #{from_ver}: #{entry[:from_sig]}"
       puts "    #{to_ver}:   #{entry[:to_sig]}"
+      print_locations(entry[:locations])
       puts ""
     end
   end
@@ -235,6 +368,12 @@ if removed.empty? && known_brk.empty? && changed.empty?
     puts ""
     puts "No compatibility issues detected."
   end
+end
+
+if result_path
+  $stdout.flush rescue nil
+  $stderr.puts ""
+  $stderr.puts "Saved raw report to: #{result_path}"
 end
 
 puts ""

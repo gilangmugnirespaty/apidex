@@ -12,6 +12,13 @@ Object#tainted?	removed	(none)	Ruby 3.2: see taint
 Object#trust	removed	(none)	Ruby 3.2: trust/untrust/trusted? removed
 Object#untrust	removed	(none)	Ruby 3.2: see trust
 Object#trusted?	removed	(none)	Ruby 3.2: see trust
+taint	removed	(none)	Ruby 3.2 — bare alias; typically called as @x.taint
+untaint	removed	(none)	Ruby 3.2 — bare alias
+tainted?	removed	(none)	Ruby 3.2 — bare alias
+untrust	removed	(none)	Ruby 3.2 — bare alias
+# NOTE: bare `trust` / `trusted?` deliberately omitted — too common as English
+# words in comments and as legitimate business-logic methods (e.g. user.trusted?).
+# Qualified Object#trust / Object#trusted? still match if called explicitly.
 $SAFE	removed	(none)	Ruby 3.0: $SAFE is now always 0, assignment raises
 $KCODE	removed	(none)	Removed
 URI.open	changed	URI.open or Kernel#open	Ruby 3.0: open-uri no longer overrides Kernel#open. Use URI.open explicitly

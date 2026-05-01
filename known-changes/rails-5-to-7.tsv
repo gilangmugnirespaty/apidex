@@ -6,6 +6,8 @@
 ActiveRecord::Base#update_attributes	removed	update	Deprecated in Rails 5, removed in Rails 6.1
 ActiveRecord::Base#update_attributes!	removed	update!	Deprecated in Rails 5, removed in Rails 6.1
 ActiveRecord::Base.update_attributes	removed	update	Use #update instead
+update_attributes	removed	update	Deprecated in Rails 5, removed in Rails 6.1 — typically called as @record.update_attributes
+update_attributes!	removed	update!	Deprecated in Rails 5, removed in Rails 6.1 — typically called as @record.update_attributes!
 before_filter	removed	before_action	Removed in Rails 5.1
 after_filter	removed	after_action	Removed in Rails 5.1
 around_filter	removed	around_action	Removed in Rails 5.1
@@ -27,6 +29,7 @@ ActiveRecord::Migration	changed	ActiveRecord::Migration[7.2]	Must specify versio
 ActiveRecord::Base#errors	changed	ActiveRecord::Base#errors	errors.messages returns frozen hash in Rails 7
 ActiveRecord::Relation#update_all	changed	ActiveRecord::Relation#update_all	Stricter argument validation in Rails 7
 ActionView::Helpers::FormHelper#form_for	deprecated	form_with	form_with preferred since Rails 5.1
+form_for	deprecated	form_with	form_with preferred since Rails 5.1 — typically called bare in views/helpers
 ActionController::Base#send_file	changed	ActionController::Base#send_file	disposition defaults changed
 ActiveRecord::Base.default_scopes	changed	ActiveRecord::Base.default_scopes	Evaluated lazily in Rails 7
 ApplicationRecord	added	(none)	Use ApplicationRecord instead of ActiveRecord::Base as parent in Rails 5+
