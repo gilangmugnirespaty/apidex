@@ -53,3 +53,4 @@ ActiveRecord::Base.generates_token_for	added	(none)	New in Rails 7.1
 ActiveRecord::Relation#excluding	added	(none)	New in Rails 7; alias: without
 ActiveRecord::Base.normalizes	added	(none)	New in Rails 7.1
 ActiveRecord::Base.enum (hash syntax)	changed	enum status: { active: 0 }	Rails 7 supports: enum :status, { active: 0 }
+is_a?	changed	is_a?(ActionController::Parameters)	Broad bare-name flag: `is_a?(Hash)` returns FALSE for ActionController::Parameters in Rails 5.1+ (Parameters no longer inherits from Hash). Audit each hit; safe when the receiver is a non-params Hash, broken when the receiver came from `params` / `.permit` / nested params indexing. Replace with `is_a?(ActionController::Parameters)`, duck-type via `respond_to?(:permit)` or `respond_to?(:each_pair)`, or restructure to drop the type check. Will produce false positives on local-variable Hashes.
